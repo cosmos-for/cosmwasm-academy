@@ -34,7 +34,8 @@ impl InstantiateResp {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecMsg {
-    Incremented { value: u64 },
+    Increment { value: u64 },
+    Reset { value: u64 },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]

@@ -7,7 +7,7 @@ mod state;
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
-use msg::{InstantiateMsg, ExecMsg};
+use msg::{ExecMsg, InstantiateMsg};
 
 use crate::contract::query;
 
@@ -26,7 +26,8 @@ pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecMsg) -> Std
     use ExecMsg::*;
 
     match msg {
-        Incremented { value } => contract::exec::increment(deps, value, info.sender.as_str())
+        Increment { value } => contract::exec::increment(deps, value, info.sender.as_str()),
+        Reset { value } => contract::exec::reset(deps, value, info.sender.as_str()),
     }
 }
 
@@ -42,12 +43,14 @@ pub fn query(deps: Deps, _env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
-    use cosmwasm_std::{Addr, Coin, Empty};
+    use cosmwasm_std::{Addr, Attribute, Coin, Empty};
     use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 
-    use crate::msg::{InstantiateMsg2, QueryMsg, ValueResp, IncrementResp};
+    use crate::msg::{IncrementResp, InstantiateMsg2, QueryMsg, ValueResp};
 
     fn counting_contract() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new(execute, instantiate, query);
@@ -123,20 +126,67 @@ mod tests {
                 ADMIN,
             )
             .unwrap();
-        let resp = app 
-            .execute_contract(sender(), contract_addr.clone(), &ExecMsg::Incremented { value: 10 }, SEND_FUNDS)
+        let resp = app
+            .execute_contract(
+                sender(),
+                contract_addr.clone(),
+                &ExecMsg::Increment { value: 10 },
+                SEND_FUNDS,
+            )
             .unwrap();
 
-        assert_eq!(
-            resp.data,
-            Some(to_binary(&IncrementResp::new(30)).unwrap())
-        );
+        let expected_value = 30;
+        let data = IncrementResp::new(expected_value);
+        assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
+
+        let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
+
+        let b = vec![
+            Attribute::new("action", "increment"),
+            Attribute::new("sender", sender()),
+            Attribute::new("counter", expected_value.to_string()),
+        ];
+
+        assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
 
         let resp: ValueResp = app
             .wrap()
-            .query_wasm_smart(contract_addr, &QueryMsg::Value {  })
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
             .unwrap();
 
         assert_eq!(resp.value, 30);
+    }
+
+    #[test]
+    fn execute_reset() {
+        let mut app = App::default();
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                sender(),
+                &InstantiateMsg2 { init: 20 },
+                SEND_FUNDS,
+                LABEL,
+                ADMIN,
+            )
+            .unwrap();
+        let resp = app
+            .execute_contract(
+                sender(),
+                contract_addr.clone(),
+                &ExecMsg::Reset { value: 10 },
+                SEND_FUNDS,
+            )
+            .unwrap();
+
+        assert_eq!(resp.data, Some(to_binary(&IncrementResp::new(10)).unwrap()));
+
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp.value, 10);
     }
 }

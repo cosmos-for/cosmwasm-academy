@@ -9,17 +9,29 @@ pub fn instantiate(deps: DepsMut, init: u64) -> StdResult<Response> {
 }
 
 pub mod exec {
-    use cosmwasm_std::{DepsMut, StdResult, Response, to_binary};
+    use cosmwasm_std::{to_binary, DepsMut, Response, StdResult};
 
-    use crate::{state::COUNTER, msg::IncrementResp};
+    use crate::{msg::IncrementResp, state::COUNTER};
 
     pub fn increment(deps: DepsMut, value: u64, sender: &str) -> StdResult<Response> {
         let value = COUNTER.update(deps.storage, |counter| -> StdResult<_> {
             Ok(counter + value)
         })?;
-    
+
         let resp: Response = Response::new()
             .add_attribute("action", "increment")
+            .add_attribute("counter", value.to_string().as_str())
+            .add_attribute("sender", sender)
+            .set_data(to_binary(&IncrementResp::new(value))?);
+
+        Ok(resp)
+    }
+
+    pub fn reset(deps: DepsMut, value: u64, sender: &str) -> StdResult<Response> {
+        let value = COUNTER.update(deps.storage, |_| -> StdResult<_> { Ok(value) })?;
+
+        let resp: Response = Response::new()
+            .add_attribute("action", "reset")
             .add_attribute("counter", value.to_string().as_str())
             .add_attribute("sender", sender)
             .set_data(to_binary(&IncrementResp::new(value))?);
