@@ -33,6 +33,24 @@ impl InstantiateResp {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum ExecMsg {
+    Incremented { value: u64 },
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct IncrementResp {
+    pub value: u64,
+}
+
+impl IncrementResp {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     Value {},
     Incremented { value: u64 },
