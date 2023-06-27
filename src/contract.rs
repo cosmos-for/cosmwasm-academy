@@ -1,10 +1,11 @@
-use cosmwasm_std::{DepsMut, Response, StdResult};
+use cosmwasm_std::{to_binary, DepsMut, Response, StdResult};
 
-use crate::state::COUNTER;
+use crate::{msg::InstantiateResp, state::COUNTER};
 
-pub fn instantiate(deps: DepsMut) -> StdResult<Response> {
-    COUNTER.save(deps.storage, &0)?;
-    Ok(Response::new())
+pub fn instantiate(deps: DepsMut, init: u64) -> StdResult<Response> {
+    COUNTER.save(deps.storage, &init)?;
+    let data = InstantiateResp::new(init);
+    Ok(Response::new().set_data(to_binary(&data)?))
 }
 
 pub mod query {

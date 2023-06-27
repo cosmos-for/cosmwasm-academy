@@ -2,11 +2,12 @@ mod contract;
 
 pub mod msg;
 
-pub mod state;
+mod state;
 
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
 };
+use msg::InstantiateMsg;
 
 use crate::contract::query;
 
@@ -15,9 +16,9 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: Empty,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    contract::instantiate(deps)
+    contract::instantiate(deps, msg.init)
 }
 
 #[entry_point]
@@ -42,7 +43,7 @@ mod tests {
     use cosmwasm_std::{Addr, Coin, Empty};
     use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 
-    use crate::msg::{QueryMsg, ValueResp};
+    use crate::msg::{InstantiateMsg2, QueryMsg, ValueResp};
 
     fn counting_contract() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new(execute, instantiate, query);
@@ -66,7 +67,7 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &QueryMsg::Value {},
+                &InstantiateMsg::new(10),
                 SEND_FUNDS,
                 LABEL,
                 ADMIN,
@@ -78,7 +79,7 @@ mod tests {
             .query_wasm_smart(contract_addr, &msg::QueryMsg::Value {})
             .unwrap();
 
-        assert_eq!(resp.value, 0);
+        assert_eq!(resp.value, 10);
     }
 
     #[test]
@@ -89,7 +90,7 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &QueryMsg::Incremented { value: 2 },
+                &InstantiateMsg2 { init: 20 },
                 SEND_FUNDS,
                 LABEL,
                 ADMIN,
