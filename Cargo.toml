@@ -8,5 +8,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cosmwasm-std = "1.2.7"
+cosmwasm-std = "1.2"
 serde = "1.0"
+
+[dev-dependencies]
+cw-multi-test = "0.16"
