@@ -1,8 +1,7 @@
+use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Coin;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct InstantiateMsg {
     #[serde(default)]
     pub init: u64,
@@ -18,14 +17,12 @@ impl InstantiateMsg {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct InstantiateMsg2 {
     pub init: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct InstantiateResp {
     pub value: u64,
     pub minimal_donation: Coin,
@@ -40,8 +37,7 @@ impl InstantiateResp {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum ExecMsg {
     Increment {
         value: u64,
@@ -58,8 +54,7 @@ pub enum ExecMsg {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct IncrementResp {
     pub value: u64,
 }
@@ -70,8 +65,7 @@ impl IncrementResp {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct DonateResp {
     pub value: u64,
 }
@@ -82,15 +76,16 @@ impl DonateResp {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(ValueResp)]
     Value {},
+    #[returns(ValueResp)]
     Incremented { value: u64 },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct ValueResp {
     pub value: u64,
 }

@@ -28,5 +28,7 @@ artifacts/
 # code coverage
 tarpaulin-report.*
 
+# schema
 packages/*/schema
 contracts/*/schema
+schema
