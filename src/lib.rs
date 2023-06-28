@@ -18,7 +18,7 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    contract::instantiate(deps, msg.init)
+    contract::instantiate(deps, msg)
 }
 
 #[entry_point]
@@ -26,8 +26,9 @@ pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecMsg) -> Std
     use ExecMsg::*;
 
     match msg {
-        Increment { value } => contract::exec::increment(deps, value, info.sender.as_str()),
-        Reset { value } => contract::exec::reset(deps, value, info.sender.as_str()),
+        Increment { value } => contract::exec::increment(deps, value, info),
+        Reset { value } => contract::exec::reset(deps, value, info),
+        Donate {} => contract::exec::donate(deps, info),
     }
 }
 
@@ -43,14 +44,13 @@ pub fn query(deps: Deps, _env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
     use super::*;
 
-    use cosmwasm_std::{Addr, Attribute, Coin, Empty};
-    use cw_multi_test::{App, Contract, ContractWrapper, Executor};
+    use cosmwasm_std::{coins, Addr, Attribute, Coin, Empty};
+    use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
 
-    use crate::msg::{IncrementResp, InstantiateMsg2, QueryMsg, ValueResp};
+    use crate::msg::{IncrementResp, QueryMsg, ValueResp};
 
     fn counting_contract() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new(execute, instantiate, query);
@@ -61,8 +61,15 @@ mod tests {
         Addr::unchecked("sei18rszd3tmgpjvjwq2qajtmn5jqvtscd2yuygl4z")
     }
 
+    fn instantiate_msg() -> InstantiateMsg {
+        InstantiateMsg::new(0, ten_atom())
+    }
+
+    fn ten_atom() -> Coin {
+        Coin::new(10, "atom")
+    }
     const LABEL: &str = "counting-contract";
-    const SEND_FUNDS: &[Coin] = &[];
+    const EMPTY_FUNDS: &[Coin] = &[];
     const ADMIN: Option<String> = None;
 
     #[test]
@@ -74,8 +81,8 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &InstantiateMsg::new(10),
-                SEND_FUNDS,
+                &instantiate_msg(),
+                EMPTY_FUNDS,
                 LABEL,
                 ADMIN,
             )
@@ -86,7 +93,7 @@ mod tests {
             .query_wasm_smart(contract_addr, &msg::QueryMsg::Value {})
             .unwrap();
 
-        assert_eq!(resp.value, 10);
+        assert_eq!(resp.value, 0);
     }
 
     #[test]
@@ -97,8 +104,8 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &InstantiateMsg2 { init: 20 },
-                SEND_FUNDS,
+                &instantiate_msg(),
+                EMPTY_FUNDS,
                 LABEL,
                 ADMIN,
             )
@@ -120,8 +127,8 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &InstantiateMsg2 { init: 20 },
-                SEND_FUNDS,
+                &instantiate_msg(),
+                EMPTY_FUNDS,
                 LABEL,
                 ADMIN,
             )
@@ -131,11 +138,11 @@ mod tests {
                 sender(),
                 contract_addr.clone(),
                 &ExecMsg::Increment { value: 10 },
-                SEND_FUNDS,
+                EMPTY_FUNDS,
             )
             .unwrap();
 
-        let expected_value = 30;
+        let expected_value = 10;
         let data = IncrementResp::new(expected_value);
         assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
@@ -154,7 +161,7 @@ mod tests {
             .query_wasm_smart(contract_addr, &QueryMsg::Value {})
             .unwrap();
 
-        assert_eq!(resp.value, 30);
+        assert_eq!(resp.value, 10);
     }
 
     #[test]
@@ -165,8 +172,8 @@ mod tests {
             .instantiate_contract(
                 contract_id,
                 sender(),
-                &InstantiateMsg2 { init: 20 },
-                SEND_FUNDS,
+                &instantiate_msg(),
+                EMPTY_FUNDS,
                 LABEL,
                 ADMIN,
             )
@@ -176,7 +183,7 @@ mod tests {
                 sender(),
                 contract_addr.clone(),
                 &ExecMsg::Reset { value: 10 },
-                SEND_FUNDS,
+                EMPTY_FUNDS,
             )
             .unwrap();
 
@@ -188,5 +195,120 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.value, 10);
+    }
+
+    #[test]
+    fn execute_donate() {
+        let mut app = App::default();
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                sender(),
+                &instantiate_msg(),
+                EMPTY_FUNDS,
+                LABEL,
+                ADMIN,
+            )
+            .unwrap();
+        let resp = app
+            .execute_contract(
+                sender(),
+                contract_addr.clone(),
+                &ExecMsg::Donate {},
+                EMPTY_FUNDS,
+            )
+            .unwrap();
+
+        let expected_value = 0;
+        let data = IncrementResp::new(expected_value);
+        assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
+
+        let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
+
+        let b = vec![
+            Attribute::new("action", "donate"),
+            Attribute::new("sender", sender()),
+            Attribute::new("counter", expected_value.to_string()),
+        ];
+
+        assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp.value, 0);
+    }
+
+    #[test]
+    fn execute_donate_with_funds() {
+        let mut app = AppBuilder::new().build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &sender(), coins(100, "atom"))
+                .unwrap();
+        });
+
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                sender(),
+                &instantiate_msg(),
+                vec![ten_atom()].as_slice(),
+                LABEL,
+                ADMIN,
+            )
+            .unwrap();
+
+        let sender_balance = app.wrap().query_balance(sender(), "atom").unwrap();
+        assert_eq!(sender_balance, Coin::new(90, "atom"));
+
+        let contract_balance = app
+            .wrap()
+            .query_balance(contract_addr.clone(), "atom")
+            .unwrap();
+        assert_eq!(contract_balance, Coin::new(10, "atom"));
+
+        let resp = app
+            .execute_contract(
+                sender(),
+                contract_addr.clone(),
+                &ExecMsg::Donate {},
+                vec![ten_atom()].as_slice(),
+            )
+            .unwrap();
+
+        let balance = app.wrap().query_balance(sender(), "atom").unwrap();
+        assert_eq!(balance, Coin::new(80, "atom"));
+
+        let contract_balance = app
+            .wrap()
+            .query_balance(contract_addr.clone(), "atom")
+            .unwrap();
+        assert_eq!(contract_balance, Coin::new(20, "atom"));
+
+        let expected_value = 1;
+        let data = IncrementResp::new(expected_value);
+        assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
+
+        let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
+
+        let b = vec![
+            Attribute::new("action", "donate"),
+            Attribute::new("sender", sender()),
+            Attribute::new("counter", expected_value.to_string()),
+        ];
+
+        assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp.value, 1);
     }
 }

@@ -1,3 +1,4 @@
+use cosmwasm_std::Coin;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -5,11 +6,15 @@ use serde::{Deserialize, Serialize};
 pub struct InstantiateMsg {
     #[serde(default)]
     pub init: u64,
+    pub minimal_donation: Coin,
 }
 
 impl InstantiateMsg {
-    pub fn new(init: u64) -> Self {
-        Self { init }
+    pub fn new(init: u64, minimal_donation: Coin) -> Self {
+        Self {
+            init,
+            minimal_donation,
+        }
     }
 }
 
@@ -23,11 +28,15 @@ pub struct InstantiateMsg2 {
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateResp {
     pub value: u64,
+    pub minimal_donation: Coin,
 }
 
 impl InstantiateResp {
-    pub fn new(value: u64) -> Self {
-        Self { value }
+    pub fn new(value: u64, minimal_donation: Coin) -> Self {
+        Self {
+            value,
+            minimal_donation,
+        }
     }
 }
 
@@ -36,6 +45,7 @@ impl InstantiateResp {
 pub enum ExecMsg {
     Increment { value: u64 },
     Reset { value: u64 },
+    Donate {},
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -45,6 +55,18 @@ pub struct IncrementResp {
 }
 
 impl IncrementResp {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct DonateResp {
+    pub value: u64,
+}
+
+impl DonateResp {
     pub fn new(value: u64) -> Self {
         Self { value }
     }
