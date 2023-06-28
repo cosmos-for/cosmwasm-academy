@@ -1,5 +1,7 @@
 mod contract;
 
+pub mod error;
+
 pub mod msg;
 
 mod state;
@@ -7,6 +9,7 @@ mod state;
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
+use error::ContractError;
 use msg::{ExecMsg, InstantiateMsg};
 
 use crate::contract::query;
@@ -22,13 +25,13 @@ pub fn instantiate(
 }
 
 #[entry_point]
-pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecMsg) -> StdResult<Response> {
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecMsg) -> Result<Response, ContractError> {
     use ExecMsg::*;
 
     match msg {
-        Increment { value } => contract::exec::increment(deps, value, info),
+        Increment { value } => contract::exec::increment(deps, value, info).map_err(ContractError::from),
         Reset { value } => contract::exec::reset(deps, value, info),
-        Donate {} => contract::exec::donate(deps, info),
+        Donate {} => contract::exec::donate(deps, info).map_err(ContractError::from),
         Withdraw {} => contract::exec::withdraw(deps, env, info),
         WithdrawTo { receiver, funds } => {
             contract::exec::withdraw_to(deps, env, info, receiver, funds)
@@ -51,7 +54,7 @@ mod tests {
 
     use super::*;
 
-    use cosmwasm_std::{coins, Addr, Attribute, Coin, Empty, StdError};
+    use cosmwasm_std::{coins, Addr, Attribute, Coin, Empty};
     use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
 
     use crate::msg::{IncrementResp, QueryMsg, ValueResp};
@@ -118,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn query_increment_should_work() {
+    fn increment_query_should_work() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -141,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_increment_should_work() {
+    fn increment_should_work() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -186,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_reset_should_work() {
+    fn reset_should_work() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -219,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_reset_should_fail() {
+    fn reset_not_owner_should_fail() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -241,11 +244,14 @@ mod tests {
             )
             .unwrap_err();
 
-        assert!(err.is::<StdError>());
+        assert_eq!(
+            ContractError::UnauthorizedErr { owner: sender().to_string() },
+            err.downcast().unwrap(),
+        );
     }
 
     #[test]
-    fn execute_donate_should_work() {
+    fn donate_should_work() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -290,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_donate_expecting_no_funds_should_work() {
+    fn donate_expecting_no_funds_should_work() {
         let mut app = App::default();
         let contract_id = app.store_code(counting_contract());
         let contract_addr = app
@@ -335,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_donate_with_funds_should_work() {
+    fn donate_with_funds_should_work() {
         let mut app = AppBuilder::new().build(|router, _api, storage| {
             router
                 .bank
@@ -405,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_withdraw_should_work() {
+    fn withdraw_should_work() {
         let mut app = AppBuilder::new().build(|router, _api, storage| {
             router
                 .bank
@@ -472,7 +478,32 @@ mod tests {
     }
 
     #[test]
-    fn execute_withdraw_to_should_work() {
+    fn withdraw_not_owner_should_fail() {
+        let mut app = App::default();
+
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner(),
+                &zero_funds_instantiate_msg(),
+                &[],
+                COUNTING_LABEL,
+                NO_ADMIN,
+            )
+            .unwrap();
+
+        let err = app.execute_contract(sender(), contract_addr, &ExecMsg::Withdraw {}, &[])
+            .unwrap_err();
+
+        assert_eq!(        
+            ContractError::UnauthorizedErr { owner: owner().to_string() },
+            err.downcast().unwrap(),
+        )
+    }
+
+    #[test]
+    fn withdraw_to_should_work() {
         let mut app = AppBuilder::new().build(|router, _api, storage| {
             router
                 .bank
@@ -542,5 +573,73 @@ mod tests {
 
         let other_balance = app.wrap().query_balance(other_sender(), "atom").unwrap();
         assert_eq!(other_balance, Coin::new(10, "atom"));
+    }
+
+    #[test]
+    fn withdraw_to_not_owner_should_fail() {
+        let mut app = App::default();
+
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner(),
+                &zero_funds_instantiate_msg(),
+                &[],
+                COUNTING_LABEL,
+                NO_ADMIN,
+            )
+            .unwrap();
+
+        let send_funds = coins(10, "atom");
+        let err = app.execute_contract(
+            sender(),
+            contract_addr,
+            &ExecMsg::WithdrawTo {
+                receiver: other_sender().to_string(),
+                funds: send_funds,
+            },
+            &[],
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            ContractError::UnauthorizedErr { owner: owner().to_string() },
+            err.downcast().unwrap(),
+        )
+    }
+
+    #[test]
+    fn withdraw_to_invalid_address_should_fail() {
+        let mut app = App::default();
+
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner(),
+                &zero_funds_instantiate_msg(),
+                &[],
+                COUNTING_LABEL,
+                NO_ADMIN,
+            )
+            .unwrap();
+
+        let send_funds = coins(10, "atom");
+        let err = app.execute_contract(
+            owner(),
+            contract_addr,
+            &ExecMsg::WithdrawTo {
+                receiver: "".into(),
+                funds: send_funds,
+            },
+            &[],
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            ContractError::InvalidAddressErr { address: "".into() },
+            err.downcast().unwrap(),
+        )
     }
 }

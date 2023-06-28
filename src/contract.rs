@@ -16,12 +16,12 @@ pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> Std
 
 pub mod exec {
     use cosmwasm_std::{
-        to_binary, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+        to_binary, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
     };
 
     use crate::{
         msg::{DonateResp, IncrementResp},
-        state::{COUNTER, DONATION, OWNER},
+        state::{COUNTER, DONATION, OWNER}, error::ContractError,
     };
 
     pub fn increment(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
@@ -38,10 +38,10 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn reset(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
+    pub fn reset(deps: DepsMut, value: u64, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(StdError::generic_err("Unauthorized"));
+            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
         }
 
         let value = COUNTER.update(deps.storage, |_| -> StdResult<_> { Ok(value) })?;
@@ -79,11 +79,11 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Response> {
+    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
 
         if info.sender != owner {
-            return Err(StdError::generic_err("Unauthorized"));
+            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
         }
 
         let contract_balances = deps.querier.query_all_balances(env.contract.address)?;
@@ -106,11 +106,16 @@ pub mod exec {
         info: MessageInfo,
         receiver: String,
         funds: Vec<Coin>,
-    ) -> StdResult<Response> {
+    ) -> Result<Response, ContractError> {
+        // Validate receiver address
+        if deps.api.addr_validate(&receiver).is_err() {
+            return Err(ContractError::InvalidAddressErr { address: receiver });
+        }
+
         let owner = OWNER.load(deps.storage)?;
 
         if info.sender != owner {
-            return Err(StdError::generic_err("Unauthorized"));
+            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
         }
 
         let mut contract_balances = deps.querier.query_all_balances(env.contract.address)?;
@@ -127,11 +132,7 @@ pub mod exec {
             }
         }
 
-        // Validate receiver address
-        if deps.api.addr_validate(&receiver).is_err() {
-            return Err(StdError::generic_err("Invalid receiver address"));
-        }
-
+        
         let bank_msg = BankMsg::Send {
             to_address: receiver,
             amount: contract_balances,
