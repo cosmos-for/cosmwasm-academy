@@ -1,24 +1,27 @@
-use cosmwasm_std::{DepsMut, Response, StdResult};
+use cosmwasm_std::{DepsMut, MessageInfo, Response, StdResult};
 
 use crate::{
     msg::InstantiateMsg,
-    state::{COUNTER, DONATION},
+    state::{COUNTER, DONATION, OWNER},
 };
 
-pub fn instantiate(deps: DepsMut, msg: InstantiateMsg) -> StdResult<Response> {
+pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> StdResult<Response> {
     COUNTER.save(deps.storage, &msg.init)?;
     DONATION.save(deps.storage, &msg.minimal_donation)?;
+    OWNER.save(deps.storage, &info.sender)?;
 
     // let data = InstantiateResp::new(msg.init, msg.minimal_donation);
     Ok(Response::new())
 }
 
 pub mod exec {
-    use cosmwasm_std::{to_binary, DepsMut, MessageInfo, Response, StdResult};
+    use cosmwasm_std::{
+        to_binary, BankMsg, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    };
 
     use crate::{
         msg::{DonateResp, IncrementResp},
-        state::{COUNTER, DONATION},
+        state::{COUNTER, DONATION, OWNER},
     };
 
     pub fn increment(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
@@ -52,10 +55,11 @@ pub mod exec {
 
         let mut counter = COUNTER.load(deps.storage)?;
 
-        if donation.amount.is_zero() || info
-            .funds
-            .iter()
-            .any(|coin| coin.denom == donation.denom && coin.amount >= donation.amount)
+        if donation.amount.is_zero()
+            || info
+                .funds
+                .iter()
+                .any(|coin| coin.denom == donation.denom && coin.amount >= donation.amount)
         {
             counter += 1;
             COUNTER.save(deps.storage, &counter)?;
@@ -66,6 +70,27 @@ pub mod exec {
             .add_attribute("counter", counter.to_string().as_str())
             .add_attribute("sender", info.sender.as_str())
             .set_data(to_binary(&DonateResp::new(counter))?);
+
+        Ok(resp)
+    }
+
+    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Response> {
+        let owner = OWNER.load(deps.storage)?;
+
+        if info.sender != owner {
+            return Err(StdError::generic_err("Unauthorized"));
+        }
+
+        let contract_balances = deps.querier.query_all_balances(env.contract.address)?;
+        let bank_msg = BankMsg::Send {
+            to_address: owner.to_string(),
+            amount: contract_balances,
+        };
+
+        let resp: Response = Response::new()
+            .add_message(bank_msg)
+            .add_attribute("action", "withdraw")
+            .add_attribute("sender", info.sender.as_str());
 
         Ok(resp)
     }

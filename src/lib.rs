@@ -15,20 +15,21 @@ use crate::contract::query;
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    contract::instantiate(deps, msg)
+    contract::instantiate(deps, info, msg)
 }
 
 #[entry_point]
-pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecMsg) -> StdResult<Response> {
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecMsg) -> StdResult<Response> {
     use ExecMsg::*;
 
     match msg {
         Increment { value } => contract::exec::increment(deps, value, info),
         Reset { value } => contract::exec::reset(deps, value, info),
         Donate {} => contract::exec::donate(deps, info),
+        Withdraw {} => contract::exec::withdraw(deps, env, info),
     }
 }
 
@@ -61,6 +62,14 @@ mod tests {
         Addr::unchecked("sei18rszd3tmgpjvjwq2qajtmn5jqvtscd2yuygl4z")
     }
 
+    fn other_sender() -> Addr {
+        Addr::unchecked("sei1aan9kqywf4rf274cal0hj6eyly6wu0uv7edxy2")
+    }
+
+    fn owner() -> Addr {
+        Addr::unchecked("sei1zj6fjsc2gkce878ukzg6g9wy8cl8p554dlggxd")
+    }
+
     fn instantiate_msg() -> InstantiateMsg {
         InstantiateMsg::new(0, ten_atom())
     }
@@ -77,9 +86,9 @@ mod tests {
         Coin::new(0, "atom")
     }
 
-    const LABEL: &str = "counting-contract";
+    const COUNTING_LABEL: &str = "counting-contract";
     const EMPTY_FUNDS: &[Coin] = &[];
-    const ADMIN: Option<String> = None;
+    const NO_ADMIN: Option<String> = None;
 
     #[test]
     fn query_value() {
@@ -92,8 +101,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
 
@@ -115,8 +124,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
 
@@ -138,8 +147,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
         let resp = app
@@ -183,8 +192,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
         let resp = app
@@ -216,8 +225,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
         let resp = app
@@ -261,8 +270,8 @@ mod tests {
                 sender(),
                 &zero_funds_instantiate_msg(),
                 EMPTY_FUNDS,
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
         let resp = app
@@ -312,8 +321,8 @@ mod tests {
                 sender(),
                 &instantiate_msg(),
                 vec![ten_atom()].as_slice(),
-                LABEL,
-                ADMIN,
+                COUNTING_LABEL,
+                NO_ADMIN,
             )
             .unwrap();
 
@@ -364,5 +373,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.value, 1);
+    }
+
+    #[test]
+    fn execute_withdraw() {
+        let mut app = AppBuilder::new().build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &sender(), coins(100, "atom"))
+                .unwrap();
+
+            router
+                .bank
+                .init_balance(storage, &other_sender(), vec![ten_atom()])
+                .unwrap();
+        });
+
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner(),
+                &zero_funds_instantiate_msg(),
+                &[],
+                COUNTING_LABEL,
+                NO_ADMIN,
+            )
+            .unwrap();
+
+        let contract_balance = app
+            .wrap()
+            .query_balance(contract_addr.clone(), "atom")
+            .unwrap();
+        assert_eq!(contract_balance, Coin::new(0, "atom"));
+
+        app.execute_contract(
+            sender(),
+            contract_addr.clone(),
+            &ExecMsg::Donate {},
+            vec![ten_atom()].as_slice(),
+        )
+        .unwrap();
+
+        app.execute_contract(
+            other_sender(),
+            contract_addr.clone(),
+            &ExecMsg::Donate {},
+            vec![ten_atom()].as_slice(),
+        )
+        .unwrap();
+
+        let contract_balance = app
+            .wrap()
+            .query_balance(contract_addr.clone(), "atom")
+            .unwrap();
+        assert_eq!(contract_balance, Coin::new(20, "atom"));
+
+        app.execute_contract(owner(), contract_addr, &ExecMsg::Withdraw {}, &[])
+            .unwrap();
+
+        let sender_balance = app.wrap().query_balance(sender(), "atom").unwrap();
+        assert_eq!(sender_balance, Coin::new(90, "atom"));
+
+        let other_balance = app.wrap().query_balance(other_sender(), "atom").unwrap();
+        assert_eq!(other_balance, Coin::new(0, "atom"));
+
+        let owner_balance = app.wrap().query_balance(owner(), "atom").unwrap();
+        assert_eq!(owner_balance, Coin::new(20, "atom"));
     }
 }
