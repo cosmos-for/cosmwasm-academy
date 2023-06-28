@@ -44,7 +44,10 @@ impl InstantiateResp {
 #[serde(rename_all = "snake_case")]
 pub enum ExecMsg {
     Increment { value: u64 },
-    Reset { value: u64 },
+    Reset { 
+        #[serde(default)]
+        value: u64 
+    },
     Donate {},
 }
 

@@ -65,9 +65,18 @@ mod tests {
         InstantiateMsg::new(0, ten_atom())
     }
 
+    fn zero_funds_instantiate_msg() -> InstantiateMsg {
+        InstantiateMsg::new(0, zero_atom())
+    }
+
     fn ten_atom() -> Coin {
         Coin::new(10, "atom")
     }
+
+    fn zero_atom() -> Coin {
+        Coin::new(0, "atom")
+    }
+
     const LABEL: &str = "counting-contract";
     const EMPTY_FUNDS: &[Coin] = &[];
     const ADMIN: Option<String> = None;
@@ -240,6 +249,51 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.value, 0);
+    }
+
+    #[test]
+    fn execute_donate_expecting_no_funds() {
+        let mut app = App::default();
+        let contract_id = app.store_code(counting_contract());
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                sender(),
+                &zero_funds_instantiate_msg(),
+                EMPTY_FUNDS,
+                LABEL,
+                ADMIN,
+            )
+            .unwrap();
+        let resp = app
+            .execute_contract(
+                sender(),
+                contract_addr.clone(),
+                &ExecMsg::Donate {},
+                EMPTY_FUNDS,
+            )
+            .unwrap();
+
+        let expected_value = 1;
+        let data = IncrementResp::new(expected_value);
+        assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
+
+        let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
+
+        let b = vec![
+            Attribute::new("action", "donate"),
+            Attribute::new("sender", sender()),
+            Attribute::new("counter", expected_value.to_string()),
+        ];
+
+        assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp.value, 1);
     }
 
     #[test]

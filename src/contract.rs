@@ -1,7 +1,7 @@
-use cosmwasm_std::{to_binary, DepsMut, Response, StdResult};
+use cosmwasm_std::{DepsMut, Response, StdResult};
 
 use crate::{
-    msg::{InstantiateMsg, InstantiateResp},
+    msg::InstantiateMsg,
     state::{COUNTER, DONATION},
 };
 
@@ -9,8 +9,8 @@ pub fn instantiate(deps: DepsMut, msg: InstantiateMsg) -> StdResult<Response> {
     COUNTER.save(deps.storage, &msg.init)?;
     DONATION.save(deps.storage, &msg.minimal_donation)?;
 
-    let data = InstantiateResp::new(msg.init, msg.minimal_donation);
-    Ok(Response::new().set_data(to_binary(&data)?))
+    // let data = InstantiateResp::new(msg.init, msg.minimal_donation);
+    Ok(Response::new())
 }
 
 pub mod exec {
@@ -52,7 +52,7 @@ pub mod exec {
 
         let mut counter = COUNTER.load(deps.storage)?;
 
-        if info
+        if donation.amount.is_zero() || info
             .funds
             .iter()
             .any(|coin| coin.denom == donation.denom && coin.amount >= donation.amount)
