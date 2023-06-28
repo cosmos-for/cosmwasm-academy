@@ -16,7 +16,7 @@ pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> Std
 
 pub mod exec {
     use cosmwasm_std::{
-        to_binary, BankMsg, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+        to_binary, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
     };
 
     use crate::{
@@ -39,6 +39,11 @@ pub mod exec {
     }
 
     pub fn reset(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
+        let owner = OWNER.load(deps.storage)?;
+        if owner != info.sender {
+            return Err(StdError::generic_err("Unauthorized"));
+        }
+
         let value = COUNTER.update(deps.storage, |_| -> StdResult<_> { Ok(value) })?;
 
         let resp: Response = Response::new()
@@ -84,6 +89,51 @@ pub mod exec {
         let contract_balances = deps.querier.query_all_balances(env.contract.address)?;
         let bank_msg = BankMsg::Send {
             to_address: owner.to_string(),
+            amount: contract_balances,
+        };
+
+        let resp: Response = Response::new()
+            .add_message(bank_msg)
+            .add_attribute("action", "withdraw")
+            .add_attribute("sender", info.sender.as_str());
+
+        Ok(resp)
+    }
+
+    pub fn withdraw_to(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+        receiver: String,
+        funds: Vec<Coin>,
+    ) -> StdResult<Response> {
+        let owner = OWNER.load(deps.storage)?;
+
+        if info.sender != owner {
+            return Err(StdError::generic_err("Unauthorized"));
+        }
+
+        let mut contract_balances = deps.querier.query_all_balances(env.contract.address)?;
+
+        if !funds.is_empty() {
+            for coin in &mut contract_balances {
+                let limit = funds
+                    .iter()
+                    .find(|c| c.denom == coin.denom)
+                    .map(|c| c.amount)
+                    .unwrap_or(Uint128::zero());
+
+                coin.amount = std::cmp::min(coin.amount, limit);
+            }
+        }
+
+        // Validate receiver address
+        if deps.api.addr_validate(&receiver).is_err() {
+            return Err(StdError::generic_err("Invalid receiver address"));
+        }
+
+        let bank_msg = BankMsg::Send {
+            to_address: receiver,
             amount: contract_balances,
         };
 

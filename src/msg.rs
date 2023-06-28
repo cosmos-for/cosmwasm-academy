@@ -52,6 +52,10 @@ pub enum ExecMsg {
     },
     Donate {},
     Withdraw {},
+    WithdrawTo {
+        receiver: String,
+        funds: Vec<Coin>,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
