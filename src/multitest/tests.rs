@@ -51,15 +51,9 @@ fn increment_should_work() {
     let data = IncrementResp::new(expected_value);
     assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
-    let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
-
-    let b = vec![
-        Attribute::new("action", "increment"),
-        Attribute::new("sender", sender()),
-        Attribute::new("counter", expected_value.to_string()),
-    ];
-
-    assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+    assert!(
+        CountingContract::verify_events(resp.events, "increment", sender().as_str())
+    );
 
     let resp: ValueResp = contract.query_value(&app).unwrap();
 
@@ -132,15 +126,9 @@ fn donate_should_work() {
     let data = DonateResp::new(expected_value);
     assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
-    let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
-
-    let b = vec![
-        Attribute::new("action", "donate"),
-        Attribute::new("sender", sender()),
-        Attribute::new("counter", expected_value.to_string()),
-    ];
-
-    assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+    assert!(
+        CountingContract::verify_events(resp.events, "increment", sender().as_str())
+    );
 
     let resp: ValueResp = contract.query_value(&app).unwrap();
 
@@ -167,15 +155,9 @@ fn donate_expecting_no_funds_should_work() {
     let data = DonateResp::new(expected_value);
     assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
-    let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
-
-    let b = vec![
-        Attribute::new("action", "donate"),
-        Attribute::new("sender", sender()),
-        Attribute::new("counter", expected_value.to_string()),
-    ];
-
-    assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+    assert!(
+        CountingContract::verify_events(resp.events, "increment", sender().as_str())
+    );
 
     let resp = contract.query_value(&app).unwrap();
 
@@ -224,15 +206,9 @@ fn donate_with_funds_should_work() {
     let data = DonateResp::new(expected_value);
     assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
-    let wasm_event = resp.events.iter().find(|e| e.ty == "wasm").unwrap();
-
-    let b = vec![
-        Attribute::new("action", "donate"),
-        Attribute::new("sender", sender()),
-        Attribute::new("counter", expected_value.to_string()),
-    ];
-
-    assert!(b.iter().all(|item| wasm_event.attributes.contains(item)));
+    assert!(
+        CountingContract::verify_events(resp.events, "increment", sender().as_str())
+    );
 
     let resp = contract.query_value(&app).unwrap();
 

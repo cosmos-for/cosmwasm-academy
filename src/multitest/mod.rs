@@ -1,6 +1,6 @@
 mod tests;
 
-use cosmwasm_std::{Addr, Coin, StdResult};
+use cosmwasm_std::{Addr, Coin, StdResult, Event, Attribute};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 use crate::{
@@ -124,6 +124,19 @@ impl CountingContract {
         app.execute_contract(sender, self.addr(), &ExecMsg::Reset { value }, &[])
             .map_err(|e| e.downcast().unwrap())
     }
+
+    #[track_caller]
+    pub fn verify_events(events: Vec<Event>, action: &str, sender: &str) -> bool {
+        let wasm_event = events.iter().find(|e| e.ty == "wasm").unwrap();
+
+        let b = vec![
+            Attribute::new("action", action),
+            Attribute::new("sender", sender),
+        ];
+        
+        b.iter().all(|item| wasm_event.attributes.contains(item))
+    }
+        
 }
 
 pub fn sender() -> Addr {
