@@ -443,5 +443,5 @@ fn migrate_should_work() {
 
     let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
 
-    assert_eq!(state, State::new(1, ten_atom()))
+    assert_eq!(state, State::new(1, zero_atom()))
 }
