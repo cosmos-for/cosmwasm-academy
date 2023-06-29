@@ -445,3 +445,23 @@ fn migrate_should_work() {
 
     assert_eq!(state, State::new(1, zero_atom()))
 }
+
+#[test]
+fn migrate_no_update_should_works() {
+    let mut app = App::default();
+
+    let code_id = CountingContract::store_code(&mut app);
+    let contract = CountingContract::instantiate_with_funds_admin(
+        &mut app,
+        code_id,
+        sender(),
+        COUNTING_LABEL,
+        0,
+        ten_atom(),
+        &[],
+        Some(owner().to_string()),
+    )
+    .unwrap();
+
+    CountingContract::migrate(&mut app, contract.addr(), code_id, owner()).unwrap();
+}

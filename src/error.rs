@@ -9,4 +9,8 @@ pub enum ContractError {
     UnauthorizedErr { owner: String },
     #[error("Invalid address {address}")]
     InvalidAddressErr { address: String },
+    #[error("Invalid contract to migrate from: {contract}")]
+    InvalidName { contract: String },
+    #[error("Unsupported contract version for migration: {version}")]
+    InvalidVersion { version: String },
 }
