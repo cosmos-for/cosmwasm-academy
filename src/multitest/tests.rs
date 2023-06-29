@@ -448,7 +448,12 @@ fn migrate_should_work() {
 
 #[test]
 fn migrate_no_update_should_works() {
-    let mut app = App::default();
+    let mut app = App::new(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(storage, &sender(), coins(10, ATOM))
+            .unwrap();
+    });
 
     let code_id = CountingContract::store_code(&mut app);
     let contract = CountingContract::instantiate_with_funds_admin(
@@ -463,5 +468,17 @@ fn migrate_no_update_should_works() {
     )
     .unwrap();
 
-    CountingContract::migrate(&mut app, contract.addr(), code_id, owner()).unwrap();
+    contract.donate(&mut app, sender(), vec![ten_atom()].as_slice()).unwrap();
+
+    let contract = CountingContract::migrate(&mut app, contract.addr(), code_id, owner()).unwrap();
+
+    let resp = contract.query_value(&app).unwrap();
+    assert_eq!(resp.value, 1);
+
+    let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
+    assert_eq!(
+        state,
+        State::new(1, ten_atom()),
+    )
+
 }
