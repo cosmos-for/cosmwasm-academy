@@ -1,6 +1,7 @@
+#[cfg(test)]
 mod tests;
 
-use cosmwasm_std::{Addr, Coin, StdResult, Event, Attribute};
+use cosmwasm_std::{Addr, Attribute, Coin, Event, StdResult};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 use crate::{
@@ -133,10 +134,9 @@ impl CountingContract {
             Attribute::new("action", action),
             Attribute::new("sender", sender),
         ];
-        
+
         b.iter().all(|item| wasm_event.attributes.contains(item))
     }
-        
 }
 
 pub fn sender() -> Addr {
