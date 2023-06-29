@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests;
 
-use cosmwasm_std::{Addr, Attribute, Coin, Event, StdResult};
+use cosmwasm_std::{Addr, Attribute, Coin, Empty, Event, StdResult};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 use crate::{
     error::ContractError,
-    execute, instantiate,
+    execute, instantiate, migrate,
     msg::{ExecMsg, InstantiateMsg, QueryMsg, ValueResp},
     query,
 };
@@ -19,7 +19,7 @@ impl CountingContract {
     }
 
     pub fn store_code(app: &mut App) -> u64 {
-        let contract = ContractWrapper::new(execute, instantiate, query);
+        let contract = ContractWrapper::new(execute, instantiate, query).with_migrate(migrate);
         app.store_code(Box::new(contract))
     }
 
@@ -32,11 +32,21 @@ impl CountingContract {
         counter: impl Into<Option<u64>>,
         minimal_donation: Coin,
     ) -> StdResult<CountingContract> {
-        Self::instantiate_with_funds(app, code_id, sender, label, counter, minimal_donation, &[])
+        Self::instantiate_with_funds_admin(
+            app,
+            code_id,
+            sender,
+            label,
+            counter,
+            minimal_donation,
+            &[],
+            None,
+        )
     }
 
     #[track_caller]
-    pub fn instantiate_with_funds(
+    #[allow(clippy::too_many_arguments)]
+    pub fn instantiate_with_funds_admin(
         app: &mut App,
         code_id: u64,
         sender: Addr,
@@ -44,6 +54,7 @@ impl CountingContract {
         counter: impl Into<Option<u64>>,
         minimal_donation: Coin,
         send_funds: &[Coin],
+        admin: Option<String>,
     ) -> StdResult<CountingContract> {
         let counter = counter.into().unwrap_or_default();
         app.instantiate_contract(
@@ -52,10 +63,22 @@ impl CountingContract {
             &InstantiateMsg::new(counter, minimal_donation),
             send_funds,
             label,
-            None,
+            admin,
         )
         .map_err(|e| e.downcast().unwrap())
         .map(CountingContract)
+    }
+
+    #[track_caller]
+    pub fn migrate(
+        app: &mut App,
+        contract_addr: Addr,
+        code_id: u64,
+        sender: Addr,
+    ) -> StdResult<Self> {
+        app.migrate_contract(sender, contract_addr.clone(), &Empty {}, code_id)
+            .map_err(|e| e.downcast().unwrap())
+            .map(|_| Self(contract_addr))
     }
 
     pub fn query_value(&self, app: &App) -> StdResult<ValueResp> {

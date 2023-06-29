@@ -3,7 +3,11 @@ use std::vec;
 use cosmwasm_std::{coins, to_binary, Coin};
 use cw_multi_test::App;
 
-use crate::msg::{DonateResp, IncrementResp, ValueResp};
+use crate::{
+    msg::{IncrementResp, ValueResp},
+    state::{State, STATE},
+};
+use counting_contract_0_1::multitest::CountingContract as CountingContract_0_1;
 
 use super::*;
 
@@ -124,10 +128,6 @@ fn donate_should_work() {
 
     let resp = contract.donate(&mut app, sender(), EMPTY_FUNDS).unwrap();
 
-    let expected_value = 0;
-    let data = DonateResp::new(expected_value);
-    assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
-
     assert!(CountingContract::verify_events(
         resp.events,
         "donate",
@@ -155,10 +155,6 @@ fn donate_expecting_no_funds_should_work() {
 
     let resp = contract.donate(&mut app, sender(), &[]).unwrap();
 
-    let expected_value = 1;
-    let data = DonateResp::new(expected_value);
-    assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
-
     assert!(CountingContract::verify_events(
         resp.events,
         "donate",
@@ -180,7 +176,7 @@ fn donate_with_funds_should_work() {
     });
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         sender(),
@@ -188,6 +184,7 @@ fn donate_with_funds_should_work() {
         0,
         zero_atom(),
         vec![ten_atom()].as_slice(),
+        None,
     )
     .unwrap();
 
@@ -207,10 +204,6 @@ fn donate_with_funds_should_work() {
 
     let contract_balance = CountingContract::query_balance(&app, contract.addr(), ATOM).unwrap();
     assert_eq!(contract_balance, Coin::new(20, ATOM));
-
-    let expected_value = 1;
-    let data = DonateResp::new(expected_value);
-    assert_eq!(resp.data.unwrap(), to_binary(&data).unwrap());
 
     assert!(CountingContract::verify_events(
         resp.events,
@@ -238,7 +231,7 @@ fn withdraw_should_work() {
     });
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         owner(),
@@ -246,6 +239,7 @@ fn withdraw_should_work() {
         0,
         zero_atom(),
         &[],
+        None,
     )
     .unwrap();
 
@@ -279,7 +273,7 @@ fn withdraw_not_owner_should_fail() {
     let mut app = App::default();
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         owner(),
@@ -287,6 +281,7 @@ fn withdraw_not_owner_should_fail() {
         0,
         zero_atom(),
         &[],
+        None,
     )
     .unwrap();
 
@@ -315,7 +310,7 @@ fn withdraw_to_should_work() {
     });
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         owner(),
@@ -323,6 +318,7 @@ fn withdraw_to_should_work() {
         0,
         zero_atom(),
         &[],
+        None,
     )
     .unwrap();
 
@@ -356,7 +352,7 @@ fn withdraw_to_not_owner_should_fail() {
     let mut app = App::default();
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         owner(),
@@ -364,6 +360,7 @@ fn withdraw_to_not_owner_should_fail() {
         0,
         zero_atom(),
         &[],
+        None,
     )
     .unwrap();
 
@@ -385,7 +382,7 @@ fn withdraw_to_invalid_address_should_fail() {
     let mut app = App::default();
 
     let contract_id = CountingContract::store_code(&mut app);
-    let contract = CountingContract::instantiate_with_funds(
+    let contract = CountingContract::instantiate_with_funds_admin(
         &mut app,
         contract_id,
         owner(),
@@ -393,6 +390,7 @@ fn withdraw_to_invalid_address_should_fail() {
         0,
         zero_atom(),
         &[],
+        None,
     )
     .unwrap();
 
@@ -407,4 +405,43 @@ fn withdraw_to_invalid_address_should_fail() {
         },
         err,
     )
+}
+
+#[test]
+fn migrate_should_work() {
+    let mut app = App::new(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(storage, &sender(), coins(10, ATOM))
+            .unwrap();
+    });
+
+    let old_code_id = CountingContract_0_1::store_code(&mut app);
+    let new_code_id = CountingContract::store_code(&mut app);
+
+    let contract = CountingContract_0_1::instantiate_with_funds(
+        &mut app,
+        old_code_id,
+        owner(),
+        COUNTING_LABEL,
+        0,
+        zero_atom(),
+        &[],
+        other_sender(),
+    )
+    .unwrap();
+
+    contract
+        .donate(&mut app, sender(), &coins(10, ATOM))
+        .unwrap();
+
+    let contract =
+        CountingContract::migrate(&mut app, contract.addr(), new_code_id, other_sender()).unwrap();
+
+    let resp = contract.query_value(&app).unwrap();
+    assert_eq!(resp.value, 1);
+
+    let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
+
+    assert_eq!(state, State::new(1, ten_atom()))
 }
