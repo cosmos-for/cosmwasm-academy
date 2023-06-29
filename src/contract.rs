@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> StdResult<Response> {
-    COUNTER.save(deps.storage, &msg.init)?;
+    COUNTER.save(deps.storage, &msg.counter)?;
     DONATION.save(deps.storage, &msg.minimal_donation)?;
     OWNER.save(deps.storage, &info.sender)?;
 
@@ -20,8 +20,9 @@ pub mod exec {
     };
 
     use crate::{
+        error::ContractError,
         msg::{DonateResp, IncrementResp},
-        state::{COUNTER, DONATION, OWNER}, error::ContractError,
+        state::{COUNTER, DONATION, OWNER},
     };
 
     pub fn increment(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
@@ -41,7 +42,9 @@ pub mod exec {
     pub fn reset(deps: DepsMut, value: u64, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
+            return Err(ContractError::UnauthorizedErr {
+                owner: owner.into(),
+            });
         }
 
         let value = COUNTER.update(deps.storage, |_| -> StdResult<_> { Ok(value) })?;
@@ -83,7 +86,9 @@ pub mod exec {
         let owner = OWNER.load(deps.storage)?;
 
         if info.sender != owner {
-            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
+            return Err(ContractError::UnauthorizedErr {
+                owner: owner.into(),
+            });
         }
 
         let contract_balances = deps.querier.query_all_balances(env.contract.address)?;
@@ -115,7 +120,9 @@ pub mod exec {
         let owner = OWNER.load(deps.storage)?;
 
         if info.sender != owner {
-            return Err(ContractError::UnauthorizedErr { owner: owner.into() });
+            return Err(ContractError::UnauthorizedErr {
+                owner: owner.into(),
+            });
         }
 
         let mut contract_balances = deps.querier.query_all_balances(env.contract.address)?;
@@ -132,7 +139,6 @@ pub mod exec {
             }
         }
 
-        
         let bank_msg = BankMsg::Send {
             to_address: receiver,
             amount: contract_balances,
@@ -155,9 +161,5 @@ pub mod query {
     pub fn value(deps: Deps) -> StdResult<ValueResp> {
         let value = COUNTER.load(deps.storage)?;
         Ok(ValueResp { value })
-    }
-
-    pub fn increment(value: u64) -> ValueResp {
-        ValueResp { value: value + 1 }
     }
 }

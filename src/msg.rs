@@ -4,14 +4,14 @@ use cosmwasm_std::Coin;
 #[cw_serde]
 pub struct InstantiateMsg {
     #[serde(default)]
-    pub init: u64,
+    pub counter: u64,
     pub minimal_donation: Coin,
 }
 
 impl InstantiateMsg {
     pub fn new(init: u64, minimal_donation: Coin) -> Self {
         Self {
-            init,
+            counter: init,
             minimal_donation,
         }
     }
@@ -81,8 +81,6 @@ impl DonateResp {
 pub enum QueryMsg {
     #[returns(ValueResp)]
     Value {},
-    #[returns(ValueResp)]
-    Incremented { value: u64 },
 }
 
 #[cw_serde]
