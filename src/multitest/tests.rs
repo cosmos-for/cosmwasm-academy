@@ -443,7 +443,7 @@ fn migrate_should_work() {
 
     let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
 
-    assert_eq!(state, State::new(1, zero_atom()))
+    assert_eq!(state, State::new(1, zero_atom(), owner()))
 }
 
 #[test]
@@ -468,7 +468,9 @@ fn migrate_no_update_should_works() {
     )
     .unwrap();
 
-    contract.donate(&mut app, sender(), vec![ten_atom()].as_slice()).unwrap();
+    contract
+        .donate(&mut app, sender(), vec![ten_atom()].as_slice())
+        .unwrap();
 
     let contract = CountingContract::migrate(&mut app, contract.addr(), code_id, owner()).unwrap();
 
@@ -476,9 +478,5 @@ fn migrate_no_update_should_works() {
     assert_eq!(resp.value, 1);
 
     let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
-    assert_eq!(
-        state,
-        State::new(1, ten_atom()),
-    )
-
+    assert_eq!(state, State::new(1, ten_atom(), sender()),)
 }

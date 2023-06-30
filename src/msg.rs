@@ -9,9 +9,9 @@ pub struct InstantiateMsg {
 }
 
 impl InstantiateMsg {
-    pub fn new(init: u64, minimal_donation: Coin) -> Self {
+    pub fn new(counter: u64, minimal_donation: Coin) -> Self {
         Self {
-            counter: init,
+            counter,
             minimal_donation,
         }
     }

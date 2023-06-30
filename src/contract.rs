@@ -1,10 +1,11 @@
-use cosmwasm_std::{Coin, DepsMut, MessageInfo, Response, StdResult};
-use cw_storage_plus::Item;
-use cw2::{get_contract_version, set_contract_version};
 use crate::{
+    error::ContractError,
     msg::InstantiateMsg,
-    state::{State, OWNER, STATE}, error::ContractError,
+    state::{State, STATE},
 };
+use cosmwasm_std::{Addr, Coin, DepsMut, MessageInfo, Response, StdResult};
+use cw2::{get_contract_version, set_contract_version};
+use cw_storage_plus::Item;
 
 const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -12,8 +13,10 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    STATE.save(deps.storage, &State::new(msg.counter, msg.minimal_donation))?;
-    OWNER.save(deps.storage, &info.sender)?;
+    STATE.save(
+        deps.storage,
+        &State::new(msg.counter, msg.minimal_donation, info.sender),
+    )?;
 
     Ok(Response::new())
 }
@@ -22,13 +25,19 @@ pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
     let contract = get_contract_version(deps.storage)?;
 
     if CONTRACT_NAME != contract.contract {
-        return Err(ContractError::InvalidName { contract: CONTRACT_NAME.into() });
+        return Err(ContractError::InvalidName {
+            contract: CONTRACT_NAME.into(),
+        });
     }
 
     let resp = match contract.version.as_str() {
         "0.1.0" => migrate_0_1_0(deps.branch()).map_err(ContractError::from)?,
         CONTRACT_VERSION => return Ok(Response::new()),
-        version => return Err(ContractError::InvalidVersion { version: version.to_owned() }),
+        version => {
+            return Err(ContractError::InvalidVersion {
+                version: version.to_owned(),
+            })
+        }
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -38,11 +47,13 @@ pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
 pub fn migrate_0_1_0(deps: DepsMut) -> StdResult<Response> {
     const COUNTER: Item<u64> = Item::new("counter");
     const DONATION: Item<Coin> = Item::new("donation");
+    const OWNER: Item<Addr> = Item::new("owner");
 
     let counter = COUNTER.load(deps.storage)?;
     let donation = DONATION.load(deps.storage)?;
+    let owner = OWNER.load(deps.storage)?;
 
-    STATE.save(deps.storage, &State::new(counter, donation))?;
+    STATE.save(deps.storage, &State::new(counter, donation, owner))?;
 
     Ok(Response::new())
 }
@@ -55,7 +66,7 @@ pub mod exec {
     use crate::{
         error::ContractError,
         msg::IncrementResp,
-        state::{State, OWNER, STATE},
+        state::{State, STATE},
     };
 
     pub fn increment(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
@@ -76,10 +87,10 @@ pub mod exec {
     }
 
     pub fn reset(deps: DepsMut, value: u64, info: MessageInfo) -> Result<Response, ContractError> {
-        let owner = OWNER.load(deps.storage)?;
-        if owner != info.sender {
+        let state = STATE.load(deps.storage)?;
+        if state.owner != info.sender {
             return Err(ContractError::UnauthorizedErr {
-                owner: owner.into(),
+                owner: state.owner.into(),
             });
         }
 
@@ -127,7 +138,7 @@ pub mod exec {
     }
 
     pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-        let owner = OWNER.load(deps.storage)?;
+        let owner = STATE.load(deps.storage)?.owner;
 
         if info.sender != owner {
             return Err(ContractError::UnauthorizedErr {
@@ -161,7 +172,7 @@ pub mod exec {
             return Err(ContractError::InvalidAddressErr { address: receiver });
         }
 
-        let owner = OWNER.load(deps.storage)?;
+        let owner = STATE.load(deps.storage)?.owner;
 
         if info.sender != owner {
             return Err(ContractError::UnauthorizedErr {
