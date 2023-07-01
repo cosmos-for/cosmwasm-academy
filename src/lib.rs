@@ -12,11 +12,9 @@ pub mod multitest;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
-use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
-};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use error::ContractError;
-use msg::{ExecMsg, InstantiateMsg};
+use msg::{ExecMsg, InstantiateMsg, MigrateMsg};
 
 use crate::contract::query;
 
@@ -31,8 +29,8 @@ pub fn instantiate(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> Result<Response, ContractError> {
-    contract::migrate(deps)
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
+    contract::migrate(deps, msg.parent)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

@@ -44,6 +44,11 @@ impl InstantiateResp {
 }
 
 #[cw_serde]
+pub struct MigrateMsg {
+    pub parent: Option<Parent>,
+}
+
+#[cw_serde]
 pub enum ExecMsg {
     Increment {
         value: u64,

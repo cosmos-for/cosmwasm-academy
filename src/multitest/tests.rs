@@ -5,7 +5,7 @@ use cw_multi_test::App;
 
 use crate::{
     msg::{IncrementResp, ValueResp},
-    state::{State, STATE},
+    state::{ParentDonation, State, PARENT_DONATION, STATE},
 };
 use counting_contract_0_1::multitest::CountingContract as CountingContract_0_1;
 
@@ -442,7 +442,8 @@ fn migrate_should_work() {
         .unwrap();
 
     let contract =
-        CountingContract::migrate(&mut app, contract.addr(), new_code_id, other_sender()).unwrap();
+        CountingContract::migrate(&mut app, contract.addr(), new_code_id, other_sender(), None)
+            .unwrap();
 
     let resp = contract.query_value(&app).unwrap();
     assert_eq!(resp.value, 1);
@@ -479,7 +480,8 @@ fn migrate_no_update_should_works() {
         .donate(&mut app, sender(), vec![ten_atom()].as_slice())
         .unwrap();
 
-    let contract = CountingContract::migrate(&mut app, contract.addr(), code_id, owner()).unwrap();
+    let contract =
+        CountingContract::migrate(&mut app, contract.addr(), code_id, owner(), None).unwrap();
 
     let resp = contract.query_value(&app).unwrap();
     assert_eq!(resp.value, 1);
@@ -554,4 +556,64 @@ fn donate_parent_should_works() {
             .unwrap(),
         coins(2, ATOM)
     );
+}
+
+#[test]
+fn migrate_parent_should_works() {
+    let mut app = App::new(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(storage, &sender(), coins(10, ATOM))
+            .unwrap();
+    });
+
+    let old_code_id = CountingContract_0_1::store_code(&mut app);
+    let new_code_id = CountingContract::store_code(&mut app);
+
+    let contract = CountingContract_0_1::instantiate_with_funds(
+        &mut app,
+        old_code_id,
+        owner(),
+        COUNTING_LABEL,
+        0,
+        zero_atom(),
+        &[],
+        other_sender(),
+    )
+    .unwrap();
+
+    contract
+        .donate(&mut app, sender(), &coins(10, ATOM))
+        .unwrap();
+
+    let contract = CountingContract::migrate(
+        &mut app,
+        contract.addr(),
+        new_code_id,
+        other_sender(),
+        Parent {
+            addr: parent().to_string(),
+            donating_period: 2,
+            part: Decimal::percent(10),
+        },
+    )
+    .unwrap();
+
+    let resp = contract.query_value(&app).unwrap();
+    assert_eq!(resp.value, 1);
+
+    let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
+
+    assert_eq!(state, State::new(1, zero_atom(), owner(), Some(2)));
+
+    let parent_donation = PARENT_DONATION.query(&app.wrap(), contract.addr()).unwrap();
+
+    assert_eq!(
+        parent_donation,
+        ParentDonation {
+            address: parent(),
+            donating_parent_period: 2,
+            part: Decimal::percent(10),
+        }
+    )
 }

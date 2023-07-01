@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests;
 
-use cosmwasm_std::{Addr, Attribute, Coin, Empty, Event, StdResult};
+use cosmwasm_std::{Addr, Attribute, Coin, Event, StdResult};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 use crate::{
     error::ContractError,
     execute, instantiate, migrate,
-    msg::{ExecMsg, InstantiateMsg, Parent, QueryMsg, ValueResp},
+    msg::{ExecMsg, InstantiateMsg, MigrateMsg, Parent, QueryMsg, ValueResp},
     query,
 };
 
@@ -80,10 +80,17 @@ impl CountingContract {
         contract_addr: Addr,
         code_id: u64,
         sender: Addr,
+        parent: impl Into<Option<Parent>>,
     ) -> StdResult<Self> {
-        app.migrate_contract(sender, contract_addr.clone(), &Empty {}, code_id)
-            .map_err(|e| e.downcast().unwrap())
-            .map(|_| Self(contract_addr))
+        let parent = parent.into();
+        app.migrate_contract(
+            sender,
+            contract_addr.clone(),
+            &MigrateMsg { parent },
+            code_id,
+        )
+        .map_err(|e| e.downcast().unwrap())
+        .map(|_| Self(contract_addr))
     }
 
     pub fn query_value(&self, app: &App) -> StdResult<ValueResp> {
@@ -177,6 +184,10 @@ pub fn other_sender() -> Addr {
 
 pub fn owner() -> Addr {
     Addr::unchecked("sei1zj6fjsc2gkce878ukzg6g9wy8cl8p554dlggxd")
+}
+
+pub fn parent() -> Addr {
+    Addr::unchecked("inj1g9v8suckezwx93zypckd4xg03r26h6ejlmsptz")
 }
 
 pub fn instantiate_msg() -> InstantiateMsg {
