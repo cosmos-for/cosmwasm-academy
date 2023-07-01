@@ -1,11 +1,12 @@
 use crate::{
     error::ContractError,
     msg::InstantiateMsg,
-    state::{State, STATE},
+    state::{ParentDonation, State, PARENT_DONATION, STATE},
 };
 use cosmwasm_std::{Addr, Coin, DepsMut, MessageInfo, Response, StdResult};
 use cw2::{get_contract_version, set_contract_version};
 use cw_storage_plus::Item;
+use serde::{Deserialize, Serialize};
 
 const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -13,10 +14,28 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn instantiate(deps: DepsMut, info: MessageInfo, msg: InstantiateMsg) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
+    let parent = msg.parent;
+
     STATE.save(
         deps.storage,
-        &State::new(msg.counter, msg.minimal_donation, info.sender),
+        &State::new(
+            msg.counter,
+            msg.minimal_donation,
+            info.sender,
+            parent.as_ref().map(|p| p.donating_period),
+        ),
     )?;
+
+    if let Some(parent) = parent {
+        PARENT_DONATION.save(
+            deps.storage,
+            &ParentDonation::new(
+                deps.api.addr_validate(&parent.addr)?,
+                parent.donating_period,
+                parent.part,
+            ),
+        )?;
+    }
 
     Ok(Response::new())
 }
@@ -32,10 +51,11 @@ pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
 
     let resp = match contract.version.as_str() {
         "0.1.0" => migrate_0_1_0(deps.branch()).map_err(ContractError::from)?,
+        "0.2.0" => migrate_0_2_0(deps.branch()).map_err(ContractError::from)?,
         CONTRACT_VERSION => return Ok(Response::new()),
         version => {
             return Err(ContractError::InvalidVersion {
-                version: version.to_owned(),
+                version: version.into(),
             })
         }
     };
@@ -44,6 +64,31 @@ pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
 
     Ok(resp)
 }
+
+pub fn migrate_0_2_0(deps: DepsMut) -> StdResult<Response> {
+    #[derive(Deserialize, Serialize)]
+    struct OldState {
+        counter: u64,
+        minimal_donation: Coin,
+        owner: Addr,
+    }
+
+    const OLD_STATE: Item<OldState> = Item::new("state");
+
+    let OldState {
+        counter,
+        minimal_donation,
+        owner,
+    } = OLD_STATE.load(deps.storage)?;
+
+    STATE.save(
+        deps.storage,
+        &State::new(counter, minimal_donation, owner, None),
+    )?;
+
+    Ok(Response::new())
+}
+
 pub fn migrate_0_1_0(deps: DepsMut) -> StdResult<Response> {
     const COUNTER: Item<u64> = Item::new("counter");
     const DONATION: Item<Coin> = Item::new("donation");
@@ -53,20 +98,20 @@ pub fn migrate_0_1_0(deps: DepsMut) -> StdResult<Response> {
     let donation = DONATION.load(deps.storage)?;
     let owner = OWNER.load(deps.storage)?;
 
-    STATE.save(deps.storage, &State::new(counter, donation, owner))?;
+    STATE.save(deps.storage, &State::new(counter, donation, owner, None))?;
 
     Ok(Response::new())
 }
 
 pub mod exec {
     use cosmwasm_std::{
-        to_binary, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
+        to_binary, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, WasmMsg,
     };
 
     use crate::{
         error::ContractError,
-        msg::IncrementResp,
-        state::{State, STATE},
+        msg::{ExecMsg, IncrementResp},
+        state::{State, PARENT_DONATION, STATE},
     };
 
     pub fn increment(deps: DepsMut, value: u64, info: MessageInfo) -> StdResult<Response> {
@@ -110,8 +155,9 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn donate(deps: DepsMut, info: MessageInfo) -> StdResult<Response> {
-        let state = STATE.load(deps.storage)?;
+    pub fn donate(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Response> {
+        let mut state = STATE.load(deps.storage)?;
+        let mut resp = Response::new();
 
         if state.minimal_donation.amount.is_zero()
             || info.funds.iter().any(|coin| {
@@ -119,20 +165,44 @@ pub mod exec {
                     && coin.amount >= state.minimal_donation.amount
             })
         {
-            STATE.save(
-                deps.storage,
-                &State {
-                    counter: state.counter + 1,
-                    ..state
-                },
-            )?;
+            state.counter += 1;
+
+            if let Some(parent) = &mut state.donating_parent {
+                *parent -= 1;
+
+                if *parent == 0 {
+                    let parent_donation = PARENT_DONATION.load(deps.storage)?;
+                    *parent = parent_donation.donating_parent_period;
+
+                    let funds: Vec<_> = deps
+                        .querier
+                        .query_all_balances(env.contract.address)?
+                        .into_iter()
+                        .map(|mut coin| {
+                            coin.amount = coin.amount * parent_donation.part;
+                            coin
+                        })
+                        .collect();
+
+                    let msg = WasmMsg::Execute {
+                        contract_addr: parent_donation.address.to_string(),
+                        msg: to_binary(&ExecMsg::Donate {})?,
+                        funds,
+                    };
+
+                    resp = resp
+                        .add_message(msg)
+                        .add_attribute("donation_to_parent", parent_donation.address.to_string());
+                }
+            }
+
+            STATE.save(deps.storage, &state)?;
         }
 
-        let resp: Response = Response::new()
+        resp = resp
             .add_attribute("action", "donate")
             .add_attribute("counter", state.counter.to_string().as_str())
             .add_attribute("sender", info.sender.as_str());
-        // .set_data(to_binary(&DonateResp::new(state.counter))?);
 
         Ok(resp)
     }

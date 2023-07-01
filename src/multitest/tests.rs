@@ -1,6 +1,6 @@
 use std::vec;
 
-use cosmwasm_std::{coins, to_binary, Coin};
+use cosmwasm_std::{coins, to_binary, Coin, Decimal};
 use cw_multi_test::App;
 
 use crate::{
@@ -185,6 +185,7 @@ fn donate_with_funds_should_work() {
         zero_atom(),
         vec![ten_atom()].as_slice(),
         None,
+        None,
     )
     .unwrap();
 
@@ -240,6 +241,7 @@ fn withdraw_should_work() {
         zero_atom(),
         &[],
         None,
+        None,
     )
     .unwrap();
 
@@ -282,6 +284,7 @@ fn withdraw_not_owner_should_fail() {
         zero_atom(),
         &[],
         None,
+        None,
     )
     .unwrap();
 
@@ -318,6 +321,7 @@ fn withdraw_to_should_work() {
         0,
         zero_atom(),
         &[],
+        None,
         None,
     )
     .unwrap();
@@ -361,6 +365,7 @@ fn withdraw_to_not_owner_should_fail() {
         zero_atom(),
         &[],
         None,
+        None,
     )
     .unwrap();
 
@@ -390,6 +395,7 @@ fn withdraw_to_invalid_address_should_fail() {
         0,
         zero_atom(),
         &[],
+        None,
         None,
     )
     .unwrap();
@@ -443,7 +449,7 @@ fn migrate_should_work() {
 
     let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
 
-    assert_eq!(state, State::new(1, zero_atom(), owner()))
+    assert_eq!(state, State::new(1, zero_atom(), owner(), None))
 }
 
 #[test]
@@ -465,6 +471,7 @@ fn migrate_no_update_should_works() {
         ten_atom(),
         &[],
         Some(owner().to_string()),
+        None,
     )
     .unwrap();
 
@@ -478,5 +485,73 @@ fn migrate_no_update_should_works() {
     assert_eq!(resp.value, 1);
 
     let state = STATE.query(&app.wrap(), contract.addr()).unwrap();
-    assert_eq!(state, State::new(1, ten_atom(), sender()),)
+    assert_eq!(state, State::new(1, ten_atom(), sender(), None))
+}
+
+#[test]
+fn donate_parent_should_works() {
+    let mut app = App::new(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(storage, &sender(), coins(20, ATOM))
+            .unwrap();
+    });
+
+    let code_id = CountingContract::store_code(&mut app);
+    let parent_contract = CountingContract::instantiate_with_funds_admin(
+        &mut app,
+        code_id,
+        owner(),
+        "Parent Contract",
+        0,
+        ten_atom(),
+        &[],
+        None,
+        None,
+    )
+    .unwrap();
+
+    let contract = CountingContract::instantiate_with_funds_admin(
+        &mut app,
+        code_id,
+        owner(),
+        COUNTING_LABEL,
+        0,
+        ten_atom(),
+        &[],
+        Some(owner().to_string()),
+        Parent {
+            addr: parent_contract.addr().to_string(),
+            donating_period: 2,
+            part: Decimal::percent(10),
+        },
+    )
+    .unwrap();
+
+    contract
+        .donate(&mut app, sender(), vec![ten_atom()].as_slice())
+        .unwrap();
+
+    contract
+        .donate(&mut app, sender(), vec![ten_atom()].as_slice())
+        .unwrap();
+
+    // let resp = parent_contract.query_value(&app).unwrap();
+    // assert_eq!(resp.value, 1);
+
+    let resp = contract.query_value(&app).unwrap();
+    assert_eq!(resp.value, 2);
+
+    assert_eq!(app.wrap().query_all_balances(owner()).unwrap(), vec![]);
+    assert_eq!(app.wrap().query_all_balances(sender()).unwrap(), vec![]);
+    assert_eq!(
+        app.wrap().query_all_balances(contract.addr()).unwrap(),
+        coins(18, ATOM)
+    );
+    assert_eq!(
+        app.wrap()
+            .query_all_balances(parent_contract.addr())
+            .unwrap(),
+        coins(2, ATOM)
+    );
 }

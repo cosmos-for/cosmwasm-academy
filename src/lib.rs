@@ -49,7 +49,7 @@ pub fn execute(
             contract::exec::increment(deps, value, info).map_err(ContractError::from)
         }
         Reset { value } => contract::exec::reset(deps, value, info),
-        Donate {} => contract::exec::donate(deps, info).map_err(ContractError::from),
+        Donate {} => contract::exec::donate(deps, env, info).map_err(ContractError::from),
         Withdraw {} => contract::exec::withdraw(deps, env, info),
         WithdrawTo { receiver, funds } => {
             contract::exec::withdraw_to(deps, env, info, receiver, funds)

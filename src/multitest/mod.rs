@@ -7,7 +7,7 @@ use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 use crate::{
     error::ContractError,
     execute, instantiate, migrate,
-    msg::{ExecMsg, InstantiateMsg, QueryMsg, ValueResp},
+    msg::{ExecMsg, InstantiateMsg, Parent, QueryMsg, ValueResp},
     query,
 };
 
@@ -41,6 +41,7 @@ impl CountingContract {
             minimal_donation,
             &[],
             None,
+            None,
         )
     }
 
@@ -54,13 +55,17 @@ impl CountingContract {
         counter: impl Into<Option<u64>>,
         minimal_donation: Coin,
         send_funds: &[Coin],
-        admin: Option<String>,
+        admin: impl Into<Option<String>>,
+        parent: impl Into<Option<Parent>>,
     ) -> StdResult<CountingContract> {
         let counter = counter.into().unwrap_or_default();
+        let admin = admin.into();
+        let parent = parent.into();
+
         app.instantiate_contract(
             code_id,
             sender,
-            &InstantiateMsg::new(counter, minimal_donation),
+            &InstantiateMsg::new(counter, minimal_donation, parent),
             send_funds,
             label,
             admin,
@@ -175,11 +180,11 @@ pub fn owner() -> Addr {
 }
 
 pub fn instantiate_msg() -> InstantiateMsg {
-    InstantiateMsg::new(0, ten_atom())
+    InstantiateMsg::new(0, ten_atom(), None)
 }
 
 pub fn zero_funds_instantiate_msg() -> InstantiateMsg {
-    InstantiateMsg::new(0, zero_atom())
+    InstantiateMsg::new(0, zero_atom(), None)
 }
 
 pub fn ten_atom() -> Coin {
